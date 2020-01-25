@@ -75,6 +75,7 @@
     #install.packages('miniUI')
 
     LoadCommonPackages()
+    library(gtools)
 
     #Section Clocking
       #section0.duration <- Sys.time() - section0.starttime
@@ -82,9 +83,207 @@
 
 # 1- CREATE CELLULAR AUTOMATA -----------------------------------------
 
+  #CONFIGS
+
+    #Number of steps
+      max.i <-
+      8.7032 %>%
+      divide_by(0.2032) %>% #longest distance in floor geometry (meters) divided by width of tiles (meters)
+      ceiling %>%
+      add(.*1) %>% #100% cushion
+      ceiling
+
+    #Rules for Testing (only interesting rules)
+      rules.for.models <-
+        paste(
+          "r",
+          c(124, 182),
+          #c(18, 22, 26, 30, 45, 73, 75, 86, 89, 105, 110, 118, 124, 135, 150, 169, 182),
+          sep = ""
+        )
+
+  #INPUT TABLES
+
+    #Complete Rules Table
+      rules.base.tb <-
+        permutations(
+          n = 2,
+          r = 3,
+          v = c(0,1),
+          repeats.allowed = T
+        ) %>%
+        .[order(rev(order(.[,1]))),] %>%
+        as_tibble() %>%
+        ReplaceNames(df = ., current.names = names(.), new.names = c("left","center","right"))
+
+
+      rules.states.tb <-
+        permutations(
+          n = 2,
+          r = 8,
+          v = c(0,1),
+          repeats.allowed = T
+        ) %>%
+        t %>%
+        .[,-1] %>%
+        as_tibble() %>%
+        ReplaceNames(df = ., current.names = names(.), new.names = paste("r",1:ncol(.), sep = ""))
+
+      rules.tb <-
+        cbind(rules.states.tb, rules.base.tb)
+
+      #testing to find column for rule 124 (confirm it is column 'r124')
+        apply(rules.tb, 2, function(x){x %>% equals(c(0,1,1,1,1,1,0,0)) %>% all}) %>%
+          as.vector %>%
+          names(rules.tb)[.]
+
+  #GENERATE AUTOMATA
+
+    #Initial Matrix
+      depth <- max.i
+      width <- depth*2+5
+      state.mtx <- matrix(0, nrow = depth, ncol = width)
+      state.mtx[1,ceiling(width/2)] <- 1 #set initial seed
+
+    i = 1
+    #for(i in 1:length(rules.for.models)){ #START OF LOOP 'i' BY MODEL RULE
+
+      #Rule for Model
+        model.i <- rules.for.models[i]
+
+      #State Change According to Rule Loop
+
+        state.ls <- list()
+        progress.bar.j <- txtProgressBar(min = 0, max = 100, style = 3)
+        max.j <- depth*width
+
+        #j = 177 #loop tester
+        for(j in 1:max.j){
+
+          setTxtProgressBar(progress.bar.j, 100*j/max.j)
+
+          row.j <- floor(j %>% divide_by(width) %>% subtract(10^-10)) %>% add(1)
+          col.j <- j %>% subtract(floor(j/width) %>% multiply_by(width))
+
+          if(row.j == 1){ #no change if on first row
+            state.ls[[j]] <- state.mtx[row.j, col.j]
+            next()
+          }
+
+          if(col.j %in% c(1,2,width - 1, width)){ #mark state '0' if on two edge columns
+            state.ls[[j]] <- 0
+            next()
+          }
+
+          neighborhood.state.center <- state.mtx[row.j - 1, col.j]
+          neighborhood.state.left <- state.mtx[row.j - 1, col.j - 1]
+          neighborhood.state.right <- state.mtx[row.j - 1, col.j + 1]
+          neighborhood.v <- c(neighborhood.state.left, neighborhood.state.center, neighborhood.state.right)
+
+          state.filter.j <-
+            rules.tb %>%
+            select(left, center, right) %>%
+            apply(., 1, function(x){x %>% equals(neighborhood.v) %>% all})
+
+          state.ls[[j]] <-
+            rules.tb %>%
+            filter(state.filter.j) %>%
+            select(model.i)
+
+          #state.mtx[row.j, col.j] <- state.j
+
+        }
+
+        state.ls %>% sapply(., function(x){x %in% c(0,1)}) %>% not %>% which
+        matrix(data = unlist(state.ls), nrow = depth, ncol = width)
+
+    #} #END OF LOOP 'i' BY MODEL RULE
+
+  #Create blank grid
+    gt = GridTopology(cellcentre=c(1,1),cellsize=c(1,1),cells=c(width, depth))
+    gt = SpatialGrid(gt)
+
+  #Cell state variable
+    z <- data.frame(state=sample(0:0, width, replace=T))
+    z[width/2, 1] <- 1
+    z[width/2+1, 1] <- 1
+
+  #Run loop to produce steps 1:depth
+    for(i in (width+1):(width*depth)){
+
+      ilf <- i-width-1
+      iup <- i-width
+      irg <- i-width+1
+
+      if(i%%width==0){ irg <- i-2*width+1 }
+      if(i%%width==1){ ilf <- i-1 }
+      if(
+        (z[ilf,1]+z[iup,1]+z[irg,1]>0)&(z[ilf,1]+z[iup,1]+z[irg,1]<3)
+      ){
+        st <- 1
+      }else{
+        st <- 0
+      }
+
+      nr <- as.data.frame(st)
+      colnames(nr) <- c("state")
+      z.output <- rbind(z,nr)
+
+    }
+
+    sgdf = SpatialGridDataFrame(gt, z)
+    image(sgdf, col=c("white", "black"))
 
 
 
+
+
+
+
+
+
+
+
+#---------------------------------------------------
+
+#Original Code from: https://www.r-bloggers.com/cellular-automata-the-beauty-of-simplicity/
+
+
+
+    #Cell state variable
+    z <- data.frame(state=sample(0:0, width, replace=T))
+    z[width/2, 1] <- 1
+    z[width/2+1, 1] <- 1
+
+  #Run loop to produce steps 1:depth
+    for(i in (width+1):(width*depth)){
+
+      ilf <- i-width-1
+      iup <- i-width
+      irg <- i-width+1
+
+      if(i%%width==0){ irg <- i-2*width+1 }
+      if(i%%width==1){ ilf <- i-1 }
+      if(
+        (z[ilf,1]+z[iup,1]+z[irg,1]>0)&(z[ilf,1]+z[iup,1]+z[irg,1]<3)
+      ){
+        st <- 1
+      }else{
+        st <- 0
+      }
+
+      nr <- as.data.frame(st)
+      colnames(nr) <- c("state")
+      z.output <- rbind(z,nr)
+
+    }
+
+    sgdf = SpatialGridDataFrame(gt, z)
+    image(sgdf, col=c("white", "black"))
+
+#----------------------------------------------------
+
+#Test Percentage Distribution of states for
 
 
 
