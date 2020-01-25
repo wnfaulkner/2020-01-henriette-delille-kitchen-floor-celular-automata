@@ -144,6 +144,7 @@
       width <- depth*2+5
       state.mtx <- matrix(0, nrow = depth, ncol = width)
       state.mtx[1,ceiling(width/2)] <- 1 #set initial seed
+      state.tb <- state.mtx %>% as_tibble()
 
     i = 1
     #for(i in 1:length(rules.for.models)){ #START OF LOOP 'i' BY MODEL RULE
@@ -153,7 +154,7 @@
 
       #State Change According to Rule Loop
 
-        state.ls <- list()
+        #state.ls <- list()
         progress.bar.j <- txtProgressBar(min = 0, max = 100, style = 3)
         max.j <- depth*width
 
@@ -163,29 +164,32 @@
           setTxtProgressBar(progress.bar.j, 100*j/max.j)
 
           row.j <- floor(j %>% divide_by(width) %>% subtract(10^-10)) %>% add(1)
-          col.j <- j %>% subtract(floor(j/width) %>% multiply_by(width))
+          col.j <- j %>% subtract(row.j %>% subtract(1) %>% multiply_by(width))
+          #if(col.j == 0)
 
           if(row.j == 1){ #no change if on first row
-            state.ls[[j]] <- state.mtx[row.j, col.j]
+            state.tb[row.j, col.j] <- state.mtx[row.j, col.j]
+            #state.ls[[j]] <- state.mtx[row.j, col.j]
             next()
           }
 
           if(col.j %in% c(1,2,width - 1, width)){ #mark state '0' if on two edge columns
-            state.ls[[j]] <- 0
+            state.tb[row.j, col.j] <- 0
+            #state.ls[[j]] <- 0
             next()
           }
 
-          neighborhood.state.center <- state.mtx[row.j - 1, col.j]
-          neighborhood.state.left <- state.mtx[row.j - 1, col.j - 1]
-          neighborhood.state.right <- state.mtx[row.j - 1, col.j + 1]
-          neighborhood.v <- c(neighborhood.state.left, neighborhood.state.center, neighborhood.state.right)
+          neighborhood.state.center <- state.tb[row.j - 1, col.j]
+          neighborhood.state.left <- state.tb[row.j - 1, col.j - 1]
+          neighborhood.state.right <- state.tb[row.j - 1, col.j + 1]
+          neighborhood.v <- c(neighborhood.state.left, neighborhood.state.center, neighborhood.state.right) %>% unlist %>% as.vector
 
           state.filter.j <-
             rules.tb %>%
             select(left, center, right) %>%
             apply(., 1, function(x){x %>% equals(neighborhood.v) %>% all})
 
-          state.ls[[j]] <-
+          state.tb[row.j, col.j] <-
             rules.tb %>%
             filter(state.filter.j) %>%
             select(model.i)
@@ -194,8 +198,13 @@
 
         }
 
-        state.ls %>% sapply(., function(x){x %in% c(0,1)}) %>% not %>% which
-        matrix(data = unlist(state.ls), nrow = depth, ncol = width)
+        #state.tb %>% as.data.frame() %>% .[1:10,floor((width/2)):100]
+
+        #state.ls %>% length %>% equals(state.ls %>% unlist %>% length)
+        #state.ls %>% lapply(., function(x){x %in% c(0,1)}) %>% unlist %>% not %>% which
+        #state.ls %>% lapply(., function(x){is.null(x)}) %>% unlist %>% which
+
+        #matrix(data = unlist(state.ls), nrow = depth, ncol = width)
 
     #} #END OF LOOP 'i' BY MODEL RULE
 
