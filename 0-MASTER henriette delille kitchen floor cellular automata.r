@@ -83,26 +83,34 @@
 
 # 1- CREATE CELLULAR AUTOMATA -----------------------------------------
 
-  #CONFIGS
+  #CONFIGS ----
 
     #Number of steps
       max.i <-
       8.7032 %>%
       divide_by(0.2032) %>% #longest distance in floor geometry (meters) divided by width of tiles (meters)
       ceiling %>%
-      add(.*1) %>% #100% cushion
+      add(.*0.5) %>% #% cushion
       ceiling
+
+    #Density Tolerance %
+      tolerance = 0.1
+
+    #Geometries to be subtracted from primary rectangle
+
+      bath1 <- c(3.863/0.2302, 1.524/0.2302)
+      #hvac <-
 
     #Rules for Testing (only interesting rules)
       rules.for.models <-
         paste(
           "r",
-          c(124, 182),
+          c(110),
           #c(18, 22, 26, 30, 45, 73, 75, 86, 89, 105, 110, 118, 124, 135, 150, 169, 182),
           sep = ""
         )
 
-  #INPUT TABLES
+  #INPUT TABLES ----
 
     #Complete Rules Table
       rules.base.tb <-
@@ -137,7 +145,7 @@
           as.vector %>%
           names(rules.tb)[.]
 
-  #GENERATE AUTOMATA
+  #GENERATE AUTOMATA ----
 
     #Initial Matrix
       depth <- max.i
@@ -198,7 +206,7 @@
 
         }
 
-        #state.tb %>% as.data.frame() %>% .[1:10,floor((width/2)):100]
+        state.tb %>% as.data.frame() %>% .[1:10,floor((width/2)):100]
 
         #state.ls %>% length %>% equals(state.ls %>% unlist %>% length)
         #state.ls %>% lapply(., function(x){x %in% c(0,1)}) %>% unlist %>% not %>% which
@@ -206,46 +214,93 @@
 
         #matrix(data = unlist(state.ls), nrow = depth, ncol = width)
 
-    #} #END OF LOOP 'i' BY MODEL RULE
 
-  #Create blank grid
-    gt = GridTopology(cellcentre=c(1,1),cellsize=c(1,1),cells=c(width, depth))
-    gt = SpatialGrid(gt)
 
-  #Cell state variable
-    z <- data.frame(state=sample(0:0, width, replace=T))
-    z[width/2, 1] <- 1
-    z[width/2+1, 1] <- 1
+  #TEST REGION DENSITY & GENERATE VISUAL ----
 
-  #Run loop to produce steps 1:depth
-    for(i in (width+1):(width*depth)){
+    dim.room <- c(7.3656, 4.6355) %>% divide_by(0.2032)
+    max.startrow <- floor(nrow(state.tb) %>% subtract(dim.room[2]))
 
-      ilf <- i-width-1
-      iup <- i-width
-      irg <- i-width+1
+    designs.ls <- list()
+    loop <- 100
+    loop.permanent <- loop
+    #i=1
+    while(length(designs.ls) < 5){
 
-      if(i%%width==0){ irg <- i-2*width+1 }
-      if(i%%width==1){ ilf <- i-1 }
-      if(
-        (z[ilf,1]+z[iup,1]+z[irg,1]>0)&(z[ilf,1]+z[iup,1]+z[irg,1]<3)
-      ){
-        st <- 1
+      #Break if reached max number of attempts
+        loop = loop-1
+        if(loop == 0){
+          print(
+            paste(
+              "Only ",
+              length(designs.ls),
+              " acceptable designs found in ",
+              loop.permanent,
+              " tries. Exiting loop"
+            )
+          )
+          break
+        }
+
+      #Define primary rectangle
+        startrow.i <- sample(1:max.startrow,1)
+
+        startcol.i <-
+          state.tb[startrow.i,] %>%
+          unlist %>% as.vector %>%
+          grep(1, .) %>%
+          min %>%
+          add(sample(1:(dim.room[1]/2), 1)*sample(c(1,-1),1))
+
+        endrow.i <- ceiling(startrow.i + dim.room[2])
+        endcol.i <- ceiling(startcol.i + dim.room[1])
+
+        area.i <-
+          state.tb[
+            startrow.i:endrow.i,
+            startcol.i:endcol.i
+          ]
+
+      #Subtract chunks for Bath 1, HVAC, counters
+
+        #Bath 1
+          area.i[
+            floor(nrow(area.i) - bath1[2]):nrow(area.i),
+            floor(ncol(area.i) - bath1[1]):ncol(area.i)
+          ] <- NA
+
+        #Counter
+          #!
+
+      density.i <- sum(area.i, na.rm = TRUE)/(nrow(area.i)*ncol(area.i))
+
+      if(density.i > (0.5-tolerance) & density.i < (0.5+tolerance)){
+        designs.ls.index <- length(designs.ls) + 1
+
+        gt <- GridTopology(cellcentre=c(1,1),cellsize=c(1,1),cells=c(ncol(area.i), nrow(area.i))) %>% SpatialGrid()
+
+        state.ls <- list()
+
+        for(j in 1:nrow(area.i)){
+          state.ls[[j]] <- area.i[j,] %>% unlist %>% as.vector
+        }
+
+        state.v <- do.call(c, state.ls) %>% as.data.frame
+
+        sgdf = SpatialGridDataFrame(gt, state.v)
+
+        designs.ls[[designs.ls.index]] <- "a"
+
+        windows()
+        image(sgdf, col=c("white", "black")) #!MAKE WITH 3 COLORS FOR SUBTRACTED GEOMETRIES
+
       }else{
-        st <- 0
+        next()
       }
-
-      nr <- as.data.frame(st)
-      colnames(nr) <- c("state")
-      z.output <- rbind(z,nr)
-
     }
 
-    sgdf = SpatialGridDataFrame(gt, z)
-    image(sgdf, col=c("white", "black"))
 
-
-
-
+    #} #END OF LOOP 'i' BY MODEL RULE
 
 
 
@@ -292,159 +347,7 @@
 
 #----------------------------------------------------
 
-#Test Percentage Distribution of states for
 
-
-
-
-
-
-
-
-
-
-  #IMPORT CONFIG TABLES ----
-    configs.ss <- gs_key("1_WEh68ccX0k63Szt-lmrI6sKfwXcp9JsmJJDA3mNPcU",verbose = TRUE)
-
-    #Import all tables from config google sheet as tibbles
-      all.configs.ls <- GoogleSheetLoadAllWorksheets(configs.ss)
-
-    #Assign each table to its own tibble object
-      ListToTibbleObjects(all.configs.ls) #Converts list elements to separate tibble objects names with
-                                          #their respective sheet names with ".tb" appended
-
-    #Extract global configs from tibble as their own character objects
-      TibbleToCharObjects(
-        tibble = config.global.tb,
-        object.names.colname = "config.name",
-        object.values.colname = "config.value"
-      )
-      use.test.data <-
-        ifelse(use.test.data == "true", TRUE, FALSE)
-
-  #IMPORT RESPONSES TABLE (IF NOT GENERATING TEST DATA) ----
-    if(!use.test.data){
-      setwd(source.tables.dir)
-
-      resp1.tb <-
-        read.csv(
-          file =
-            MostRecentlyModifiedFilename(
-              title.string.match = main.data.file.name.character.string,
-              file.type = "csv",
-              dir = source.tables.dir
-            ),
-          stringsAsFactors = FALSE,
-          header = TRUE
-        ) %>%
-        as_tibble(.)
-    }
-
-  #CREATE TEST DATA ----
-    if(use.test.data){
-
-      #num.enumerators <- 10
-      #expected.num.responses <- 50
-      resp.ls <- list()
-
-      #i = 21
-      for(i in 1:nrow(variables.tb)){ #START OF LOOP 'i' BY VARIABLE
-
-        var.id.i <- variables.tb$var.id[i]
-        var.type.i <- variables.tb$var.type[variables.tb$var.id == var.id.i]
-
-        #if variable type not one of allowable types, skip to next loop
-          allowable.var.types <- c("categorical", "binary")#, "date", "open.text", "ordinal")
-          if(!var.type.i %in% allowable.var.types){
-            print(
-              paste(
-                "Loop: [",
-                i,
-                "]: Variable type in variables table not one of allowable types.",
-                sep = ""
-              )
-            )
-            next()
-          }
-
-        #Binary
-          #when categories not specified in configs
-            #if(var.type.i == "binary" && is.na(variables.tb$ans.opt[i])){
-            #  var.i <-
-            #    sample(
-            #      c(0,1),
-            #      replace = TRUE,
-            #      size = expected.num.responses,
-            #      prob = runif(2, min = 0, max = 1)
-            #    )
-            #}
-
-          #when categories specified in configs
-            #if(var.type.i == "binary" && !is.na(variables.tb$ans.opt[i])){
-            #
-            #  ans.opt.i <- variables.tb$ans.opt[i] %>% strsplit(., split = ";") %>% unlist %>% trimws
-            #
-            #  var.i <-
-            #    sample(
-            #      ans.opt.i,
-            #      replace = TRUE,
-            #      size = expected.num.responses,
-            #      prob = runif(2, min = 0, max = 1)
-            #    )
-            #}
-
-        #Ordinal
-
-
-        #Categorical
-          #when categories not specified in configs
-            #if(var.type.i == "categorical" && is.na(variables.tb$ans.opt[i])){
-            #
-            #    var.i <-
-            #      sample(
-            #        seq(from = 1, to = num.enumerators),
-            #        replace = TRUE,
-            #        size = expected.num.responses
-            #      )
-
-            #}
-
-          #when categories specified in configs
-            #if(var.type.i == "categorical" && !is.na(variables.tb$ans.opt[i])){
-            #
-            #  ans.opt.i <- variables.tb$ans.opt[i] %>% strsplit(., split = ";") %>% unlist %>% trimws
-            #
-            #  #! make so can have non-uniform probabilities for different answer options
-            #  #prob.i <-
-            #
-            #  var.i <-
-            #    sample(
-            #      ans.opt.i,
-            #      replace = TRUE,
-            #      size = expected.num.responses
-            #      #prob = prob.i
-            #    )
-            #}
-
-        #Date
-
-        #Open Text
-
-        resp.ls[[i]] <- var.i
-
-      } #END OF LOOP 'i' BY VARIABLE
-
-      #Compile list into tibble
-
-      #Update names to correct variable names
-
-    } #End of if-statement for creating test data
-
-  #Section Clocking
-    #section1.duration <- Sys.time() - section1.starttime
-    #section1.duration
-    #Sys.time() - sections.all.starttime
-    #toc()
 
 
 
