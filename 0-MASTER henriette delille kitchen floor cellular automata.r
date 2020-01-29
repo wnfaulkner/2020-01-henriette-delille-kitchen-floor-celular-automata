@@ -75,6 +75,7 @@
     #install.packages('miniUI')
 
     LoadCommonPackages()
+    library(sp)
     library(gtools)
 
     #Section Clocking
@@ -85,27 +86,41 @@
 
   #CONFIGS ----
 
+    #Meter converter
+      ft.to.m <- 0.3048
+
+    #Tile Dimensions Multiplier
+      tile.dim <- 0.2032
+
     #Number of steps
       max.i <-
-      8.7032 %>%
-      divide_by(0.2032) %>% #longest distance in floor geometry (meters) divided by width of tiles (meters)
-      ceiling %>%
-      add(.*0.5) %>% #% cushion
-      ceiling
+        8.7032 %>%
+        divide_by(tile.dim) %>% #longest distance in floor geometry (meters) divided by width of tiles (meters)
+        ceiling %>%
+        add(.*0.5) %>% #% cushion
+        ceiling
 
     #Density Tolerance %
       tolerance = 0.1
 
-    #Geometries to be subtracted from primary rectangle
-
-      bath1 <- c(3.863/0.2302, 1.524/0.2302)
-      #hvac <-
+    #Geometries
+      geoms.ls <-
+        list(
+          dim.room = c(24.163, 15.208),
+          bath1 = c(5, 12.67388),
+          island = c(3.429,3.286),
+          se.counter = c(2.143,6.286),
+          sw.counter = c(11.429, 2.286),
+          fridge = c(3.429,3.286),
+          hvac = c(2.786,3.929)
+        ) %>%
+        lapply(., function(x){x*ft.to.m/tile.dim})
 
     #Rules for Testing (only interesting rules)
       rules.for.models <-
         paste(
           "r",
-          c(110),
+          c(18),
           #c(18, 22, 26, 30, 45, 73, 75, 86, 89, 105, 110, 118, 124, 135, 150, 169, 182),
           sep = ""
         )
@@ -176,7 +191,7 @@
           #if(col.j == 0)
 
           if(row.j == 1){ #no change if on first row
-            state.tb[row.j, col.j] <- state.mtx[row.j, col.j]
+            #state.tb[row.j, col.j] <- state.tb[row.j, col.j]
             #state.ls[[j]] <- state.mtx[row.j, col.j]
             next()
           }
@@ -206,7 +221,7 @@
 
         }
 
-        state.tb %>% as.data.frame() %>% .[1:10,floor((width/2)):100]
+        state.tb %>% as.data.frame() %>% .[1:10,floor((width/2)-15):85]
 
         #state.ls %>% length %>% equals(state.ls %>% unlist %>% length)
         #state.ls %>% lapply(., function(x){x %in% c(0,1)}) %>% unlist %>% not %>% which
@@ -218,11 +233,11 @@
 
   #TEST REGION DENSITY & GENERATE VISUAL ----
 
-    dim.room <- c(7.3656, 4.6355) %>% divide_by(0.2032)
+    dim.room <- geoms.ls$dim.room
     max.startrow <- floor(nrow(state.tb) %>% subtract(dim.room[2]))
 
     designs.ls <- list()
-    loop <- 100
+    loop <- 1000
     loop.permanent <- loop
     #i=1
     while(length(designs.ls) < 5){
@@ -243,7 +258,7 @@
         }
 
       #Define primary rectangle
-        startrow.i <- sample(1:max.startrow,1)
+        startrow.i <- 1#sample(1:max.startrow,1)
 
         startcol.i <-
           state.tb[startrow.i,] %>%
@@ -259,44 +274,76 @@
           state.tb[
             startrow.i:endrow.i,
             startcol.i:endcol.i
-          ]
+          ] #%>%
+          #.[rev(order(as.vector(unlist(.[,1])))),]
 
       #Subtract chunks for Bath 1, HVAC, counters
 
         #Bath 1
           area.i[
-            floor(nrow(area.i) - bath1[2]):nrow(area.i),
-            floor(ncol(area.i) - bath1[1]):ncol(area.i)
+            floor(nrow(area.i) - geoms.ls$bath1[1]):nrow(area.i),
+            floor(ncol(area.i) - geoms.ls$bath1[2]):ncol(area.i)
           ] <- NA
 
-        #Counter
-          #!
+        #SE Counter
+          area.i[
+            floor(nrow(area.i) - geoms.ls$se.counter[1]):nrow(area.i),
+            1:geoms.ls$se.counter[2]
+          ] <- NA
 
-      density.i <- sum(area.i, na.rm = TRUE)/(nrow(area.i)*ncol(area.i))
+        #SW Counter
+          area.i[
+            floor(nrow(area.i) - geoms.ls$sw.counter[1]):nrow(area.i),
+            1:geoms.ls$sw.counter[2]
+          ] <- NA
 
-      if(density.i > (0.5-tolerance) & density.i < (0.5+tolerance)){
-        designs.ls.index <- length(designs.ls) + 1
+        #Fridge
+          area.i[
+            1:floor(geoms.ls$fridge[1]),
+            1:floor(geoms.ls$fridge[2])
+          ] <- NA
 
-        gt <- GridTopology(cellcentre=c(1,1),cellsize=c(1,1),cells=c(ncol(area.i), nrow(area.i))) %>% SpatialGrid()
+        #HVAC
+          hvac.startcol <- 3.683/tile.dim
 
-        state.ls <- list()
+          area.i[
+            1:floor(geoms.ls$hvac[1]),
+            hvac.startcol:(hvac.startcol + floor(geoms.ls$hvac[1]))
+          ] <- NA
 
-        for(j in 1:nrow(area.i)){
-          state.ls[[j]] <- area.i[j,] %>% unlist %>% as.vector
-        }
+        #Island
+          island.startrow <- 5.857*ft.to.m/tile.dim
+          island.startcol <- 4.5*ft.to.m/tile.dim
+          area.i[
+            island.startrow:(island.startrow+geoms.ls$island[1]),
+            island.startcol:(island.startcol+geoms.ls$island[2])
+          ] <- NA
 
-        state.v <- do.call(c, state.ls) %>% as.data.frame
+      density.i <- sum(area.i, na.rm = TRUE)/(nrow(area.i)*ncol(area.i)-sum(is.na(area.i)))
 
-        sgdf = SpatialGridDataFrame(gt, state.v)
-
-        designs.ls[[designs.ls.index]] <- "a"
-
-        windows()
-        image(sgdf, col=c("white", "black")) #!MAKE WITH 3 COLORS FOR SUBTRACTED GEOMETRIES
-
-      }else{
+      if((density.i > (0.5-tolerance) & density.i < (0.5+tolerance)) %>% not){
         next()
       }
+
+      designs.ls.index <- length(designs.ls) + 1
+
+      gt <- GridTopology(cellcentre=c(1,1),cellsize=c(1,1),cells=c(ncol(area.i), nrow(area.i))) %>% SpatialGrid()
+
+      state.ls <- list()
+
+      for(j in 1:nrow(area.i)){
+        state.ls[[j]] <- area.i[j,] %>% unlist %>% as.vector
+      }
+
+      state.v <- do.call(c, state.ls) %>% as.data.frame
+
+      sgdf = SpatialGridDataFrame(gt, state.v)
+
+      designs.ls[[designs.ls.index]] <- "a"
+
+      windows()
+      image(sgdf, col=c("white", "black")) #!MAKE WITH 3 COLORS FOR SUBTRACTED GEOMETRIES
+
     }
 
 
