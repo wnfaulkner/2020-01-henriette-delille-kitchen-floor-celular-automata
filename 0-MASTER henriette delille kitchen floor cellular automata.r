@@ -98,49 +98,26 @@
       check.density <- TRUE
 
     #Desired Density
-      desired.density <- 0.6
+      desired.density <- 0.5
 
     #Density Tolerance %
-      tolerance = 0.15
+      tolerance = 0.1
 
     #Rules for Testing (only interesting rules)
-      rules.for.visualization <- c(30)
+      rules.for.visualization <- c(250)
 
       rules.for.models <-
         paste(
           "r",
-          #c(18,22,26),
-          c(1:256),
+          c(18,22,26,28,30,45,50,54,57,58,60,62,69,70,73,75,77,78,79,81,82,86,89,90,91,94,95,99,101,102,105,109,110,114,118,121,122,124,126,129,131,133,135,137,141,146,147,149,150,153,154,158,163,165,167,169,181,182,186,188,190,193,195,197,210,214,218,225,230,246,250,252,254),
+          #c(1:256),
           sep = ""
         )
 
     #Number of outputs
       num.outputs <- 10
 
-    #Number of steps
-      max.i <-
-        8.7032 %>%
-        divide_by(tile.dim) %>% #longest distance in floor geometry (meters) divided by width of tiles (meters)
-        ceiling %>%
-        add(.*0.5) %>% #% cushion
-        ceiling
-
-    #Geometries
-      geoms.ls <-
-        list(
-          dim.room = c(24.163, 15.208),
-          bath1 = c(5, 12.67388),
-          island = c(3.429,3.286),
-          se.counter = c(2.143,6.286),
-          sw.counter = c(11.429, 2.286),
-          fridge = c(3.429,3.286),
-          hvac = c(2.786,3.929)
-        ) %>%
-        lapply(., function(x){x*ft.to.m/tile.dim})
-
-
-
-  #INPUT TABLES ----
+  #INPUT TABLES & OBJECTS ----
 
     #Complete Rules Table
       rules.base.tb <-
@@ -174,6 +151,27 @@
         apply(rules.tb, 2, function(x){x %>% equals(c(0,1,1,1,1,1,0,0)) %>% all}) %>%
           as.vector %>%
           names(rules.tb)[.]
+
+    #Number of steps
+      max.i <-
+        8.7032 %>%
+        divide_by(tile.dim) %>% #longest distance in floor geometry (meters) divided by width of tiles (meters)
+        ceiling %>%
+        add(.*0.5) %>% #% cushion
+        ceiling
+
+    #Geometries
+      geoms.ls <-
+        list(
+          dim.room = c(24.163, 15.208),
+          bath1 = c(5, 12.67388),
+          island = c(3.429,3.286),
+          se.counter = c(2.143,6.286),
+          sw.counter = c(11.429, 2.286),
+          fridge = c(3.429,3.286),
+          hvac = c(2.786,3.929)
+        ) %>%
+        lapply(., function(x){x*ft.to.m/tile.dim})
 
   #GENERATE AUTOMATA ----
 
@@ -263,11 +261,12 @@
   #Viz Inputs
     state.tb <-
       read.csv(
-        file = paste("r", rules.for.visualization, sep = ""),
+        file = paste("r", rules.for.visualization, ".csv", sep = ""),
         header = TRUE
       )
     designs.ls <- list()
-    loop <- 1000
+    density.ls <- list()
+    loop <- 500
     loop.permanent <- loop
 
   #Viz Itself
@@ -290,7 +289,7 @@
         }
 
       #Define primary rectangle
-        startrow.i <- 1#sample(1:max.startrow,1)
+        startrow.i <- sample(1:max.startrow,1)
 
         startcol.i <-
           state.tb[startrow.i,] %>%
@@ -298,6 +297,8 @@
           grep(1, .) %>%
           min %>%
           add(sample(1:(dim.room[1]/2), 1)*sample(c(1,-1),1))
+
+        if(startcol.i < 0){startcol.i <- 1}
 
         endrow.i <- ceiling(startrow.i + dim.room[2])
         endcol.i <- ceiling(startcol.i + dim.room[1])
@@ -330,10 +331,10 @@
           ] <- NA
 
         #Fridge
-          area.i[
-            1:floor(geoms.ls$fridge[1]),
-            1:floor(geoms.ls$fridge[2])
-          ] <- NA
+          #area.i[
+          #  1:floor(geoms.ls$fridge[1]),
+          #  1:floor(geoms.ls$fridge[2])
+          #] <- NA
 
         #HVAC
           hvac.startcol <- 3.683/tile.dim
@@ -352,9 +353,12 @@
           ] <- NA
 
       density.i <- sum(area.i, na.rm = TRUE)/(nrow(area.i)*ncol(area.i)-sum(is.na(area.i)))
+      density.ls[[loop]] <- density.i
+      print(c(loop, density.i))
 
       if(check.density){
-        if((density.i > (desired.density-tolerance) & density.i < (desired.density+tolerance)) %>% not){
+        if(
+          (density.i > (desired.density-tolerance) & density.i < (desired.density+tolerance)) %>% not){
           next()
         }
       }
@@ -380,6 +384,26 @@
 
     }
 
+  #Density Kernel Graph
+    density.v <- density.ls %>% unlist %>% as.vector
+    100*mean(density.v, na.rm = TRUE)
+    density.kernel <- density.v %>% density
+    plot(density.kernel, xlim = c(0,1))
+    #plot(1-density.kernel, xlim = c(0,1))
+    polygon(density.kernel, col = "grey")
+    polygon(
+      x =
+        c(
+          desired.density-tolerance,
+          desired.density+tolerance,
+          desired.density+tolerance,
+          desired.density-tolerance
+        ),
+      y = c(0,0,10^2,10^2),
+      col = rgb(1,0,0,0.2),
+      border = NA
+    )
+    abline(v=desired.density)
 
     #} #END OF LOOP 'i' BY MODEL RULE
 
