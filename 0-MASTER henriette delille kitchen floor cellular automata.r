@@ -2,7 +2,9 @@
 #      	2020-01 henriette delille kitchen floor cellular automata   	    #
 #0000000000000000000000000000000000000000000000000000000000000000000000000#
 
-# 0-SETUP -----------------------------------------------------------
+#Original Code from: https://www.r-bloggers.com/cellular-automata-the-beauty-of-simplicity/
+
+# 0 - SETUP -----------------------------------------------------------
 
   #INITIAL SETUP
     rm(list=ls()) #Remove lists
@@ -50,8 +52,8 @@
     #Establish Outputs Directory
       outputs.parent.folder <-
         paste(
-          wd,
-          "1. Outputs\\",
+          rproj.dir,
+          "\\1. Outputs\\",
           sep  = ""
         )
 
@@ -82,7 +84,7 @@
       #section0.duration <- Sys.time() - section0.starttime
       #section0.duration
 
-# 1- CREATE CELLULAR AUTOMATA -----------------------------------------
+# 1 - CREATE CELLULAR AUTOMATA -----------------------------------------
 
   #CONFIGS ----
 
@@ -92,6 +94,29 @@
     #Tile Dimensions Multiplier
       tile.dim <- 0.2032
 
+    #Check Density
+      check.density <- TRUE
+
+    #Desired Density
+      desired.density <- 0.6
+
+    #Density Tolerance %
+      tolerance = 0.15
+
+    #Rules for Testing (only interesting rules)
+      rules.for.visualization <- c(30)
+
+      rules.for.models <-
+        paste(
+          "r",
+          #c(18,22,26),
+          c(1:256),
+          sep = ""
+        )
+
+    #Number of outputs
+      num.outputs <- 10
+
     #Number of steps
       max.i <-
         8.7032 %>%
@@ -99,9 +124,6 @@
         ceiling %>%
         add(.*0.5) %>% #% cushion
         ceiling
-
-    #Density Tolerance %
-      tolerance = 0.1
 
     #Geometries
       geoms.ls <-
@@ -116,14 +138,7 @@
         ) %>%
         lapply(., function(x){x*ft.to.m/tile.dim})
 
-    #Rules for Testing (only interesting rules)
-      rules.for.models <-
-        paste(
-          "r",
-          c(18),
-          #c(18, 22, 26, 30, 45, 73, 75, 86, 89, 105, 110, 118, 124, 135, 150, 169, 182),
-          sep = ""
-        )
+
 
   #INPUT TABLES ----
 
@@ -169,11 +184,20 @@
       state.mtx[1,ceiling(width/2)] <- 1 #set initial seed
       state.tb <- state.mtx %>% as_tibble()
 
-    i = 1
-    #for(i in 1:length(rules.for.models)){ #START OF LOOP 'i' BY MODEL RULE
+    #i = 1
+    for(i in 1:length(rules.for.models)){ #START OF LOOP 'i' BY MODEL RULE
 
       #Rule for Model
         model.i <- rules.for.models[i]
+        print(i)
+        print(model.i)
+
+      #Check if model exists already and can load direct from csv
+        setwd(outputs.parent.folder)
+        if(paste(model.i, ".csv",sep="") %>% file.exists){
+          print("Automata for this rule already generated. Will visualize from previous csv.")
+          next()
+        }
 
       #State Change According to Rule Loop
 
@@ -223,24 +247,32 @@
 
         state.tb %>% as.data.frame() %>% .[1:10,floor((width/2)-15):85]
 
-        #state.ls %>% length %>% equals(state.ls %>% unlist %>% length)
-        #state.ls %>% lapply(., function(x){x %in% c(0,1)}) %>% unlist %>% not %>% which
-        #state.ls %>% lapply(., function(x){is.null(x)}) %>% unlist %>% which
+    #Store for later use
+      write.csv(state.tb, file = paste(model.i,".csv",sep=""), row.names = FALSE)
 
-        #matrix(data = unlist(state.ls), nrow = depth, ncol = width)
-
+    } #END OF LOOP 'i' BY MODEL
 
 
-  #TEST REGION DENSITY & GENERATE VISUAL ----
+# 2 - TEST REGION DENSITY & GENERATE VISUAL -----------------------------------------------
+
+  #Viz Configs
 
     dim.room <- geoms.ls$dim.room
     max.startrow <- floor(nrow(state.tb) %>% subtract(dim.room[2]))
 
+  #Viz Inputs
+    state.tb <-
+      read.csv(
+        file = paste("r", rules.for.visualization, sep = ""),
+        header = TRUE
+      )
     designs.ls <- list()
     loop <- 1000
     loop.permanent <- loop
+
+  #Viz Itself
     #i=1
-    while(length(designs.ls) < 5){
+    while(length(designs.ls) < num.outputs){
 
       #Break if reached max number of attempts
         loop = loop-1
@@ -321,8 +353,10 @@
 
       density.i <- sum(area.i, na.rm = TRUE)/(nrow(area.i)*ncol(area.i)-sum(is.na(area.i)))
 
-      if((density.i > (0.5-tolerance) & density.i < (0.5+tolerance)) %>% not){
-        next()
+      if(check.density){
+        if((density.i > (desired.density-tolerance) & density.i < (desired.density+tolerance)) %>% not){
+          next()
+        }
       }
 
       designs.ls.index <- length(designs.ls) + 1
@@ -355,50 +389,8 @@
 
 
 
-#---------------------------------------------------
 
-#Original Code from: https://www.r-bloggers.com/cellular-automata-the-beauty-of-simplicity/
-
-
-
-    #Cell state variable
-    z <- data.frame(state=sample(0:0, width, replace=T))
-    z[width/2, 1] <- 1
-    z[width/2+1, 1] <- 1
-
-  #Run loop to produce steps 1:depth
-    for(i in (width+1):(width*depth)){
-
-      ilf <- i-width-1
-      iup <- i-width
-      irg <- i-width+1
-
-      if(i%%width==0){ irg <- i-2*width+1 }
-      if(i%%width==1){ ilf <- i-1 }
-      if(
-        (z[ilf,1]+z[iup,1]+z[irg,1]>0)&(z[ilf,1]+z[iup,1]+z[irg,1]<3)
-      ){
-        st <- 1
-      }else{
-        st <- 0
-      }
-
-      nr <- as.data.frame(st)
-      colnames(nr) <- c("state")
-      z.output <- rbind(z,nr)
-
-    }
-
-    sgdf = SpatialGridDataFrame(gt, z)
-    image(sgdf, col=c("white", "black"))
-
-#----------------------------------------------------
-
-
-
-
-
-# 5-EXPORT -----------------------------------------------
+# 5 - EXPORT -----------------------------------------------
   #EXPORT SETUP: CLOCKING, LOAD FUNCTIONS, ESTABLISH OUTPUTS DIRECTORY ----
     #Code Clocking
       section6.starttime <- Sys.time()
